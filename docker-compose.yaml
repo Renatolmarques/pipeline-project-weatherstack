@@ -1,0 +1,28 @@
+services:
+  db:
+    container_name: postgres_container
+    image: postgres:14.17
+    platform: linux/amd64 # Specifies the platform for Apple Silicon compatibility
+    ports:
+      - "5001:5432"
+    environment:
+      POSTGRES_DB: db
+      POSTGRES_USER: db_user
+      POSTGRES_PASSWORD: db_password
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+
+  dbt:
+    container_name: dbt_container
+    # Official image with dbt and the Postgres adapter pre-installed
+    image: ghcr.io/dbt-labs/dbt-postgres:1.8.1
+    platform: linux/amd64 # Specifies the platform for Apple Silicon compatibility
+    # Mounts the local 'dbt' folder into the container.
+    # This allows local editing of files that dbt will see inside the container.
+    volumes:
+      - ./dbt:/usr/app/dbt
+    # Keeps the container running so we can exec into it to run commands.
+    command: ["tail", "-f", "/dev/null"]
+    # Ensures the dbt service only starts after the 'db' service is ready.
+    depends_on:
+      - db
