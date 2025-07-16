@@ -14,15 +14,22 @@ services:
 
   dbt:
     container_name: dbt_container
-    # Official image with dbt and the Postgres adapter pre-installed
     image: ghcr.io/dbt-labs/dbt-postgres:1.8.1
-    platform: linux/amd64 # Specifies the platform for Apple Silicon compatibility
-    # Mounts the local 'dbt' folder into the container.
-    # This allows local editing of files that dbt will see inside the container.
+    platform: linux/amd64
+    
+    # Mounts the current project directory (.) into '/app' inside the container
     volumes:
-      - ./dbt:/usr/app/dbt
-    # Keeps the container running so we can exec into it to run commands.
-    command: ["tail", "-f", "/dev/null"]
-    # Ensures the dbt service only starts after the 'db' service is ready.
+      - .:/app
+      
+    # Sets the default working directory inside the container
+    working_dir: /app
+    
+    # ADD THIS LINE TO DISABLE THE DEFAULT ENTRYPOINT
+    entrypoint: ""
+    
+    # This command now runs directly, keeping the container alive
+    command: tail -f /dev/null
+    
+    # Ensures the dbt service only starts after the 'db' service is ready
     depends_on:
       - db
