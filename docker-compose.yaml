@@ -1,7 +1,21 @@
-# Final and corrected docker-compose file for the entire data pipeline project.
-# This version uses the 'user' directive for better permission handling with Airflow.
+# Final, community-standard docker-compose file for the entire data pipeline project.
+# This version uses the official Airflow pattern with an 'airflow-init' service.
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.1
+  user: "${AIRFLOW_UID:-50000}"
+  environment:
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow_db:5432/airflow
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - /var/run/docker.sock:/var/run/docker.sock
 
 services:
+  # --- PROJECT-SPECIFIC SERVICES ---
   db:
     container_name: postgres_data_db
     image: postgres:14.17
@@ -9,9 +23,9 @@ services:
     ports:
       - "5001:5432"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - ./postgres/data:/var/lib/postgresql/data
 
@@ -45,15 +59,16 @@ services:
     ports:
       - "8088:8088"
     environment:
-      # We only need the secret key here now
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
+    command: >
+      bash -c "pip install psycopg2-binary && /usr/bin/run-server.sh"
     volumes:
       - ./superset/data:/app/superset_home
-      - ./superset/requirements-local.txt:/app/docker/requirements-local.txt
     depends_on:
       - db
       - redis
 
+  # --- AIRFLOW SERVICES (Official Pattern) ---
   postgres_airflow_db:
     image: postgres:13
     container_name: postgres_airflow_db
@@ -63,44 +78,48 @@ services:
       - POSTGRES_DB=airflow
     ports:
       - "5434:5432"
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   airflow-webserver:
-    image: apache/airflow:2.8.1
+    <<: *airflow-common # Inherits all settings from 'airflow-common'
     container_name: airflow_webserver
     command: webserver
     ports:
-      - "8080:8080"
-    user: "${AIRFLOW_UID:-50000}"
+      - 8080:8080
     depends_on:
-      postgres_airflow_db:
-        condition: service_healthy
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
-    environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow_db:5432/airflow
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      # ADD THIS LINE to increase the webserver startup timeout to 300s
-      - GUNICORN_CMD_ARGS=--timeout 300
+      - postgres_airflow_db
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   airflow-scheduler:
-    image: apache/airflow:2.8.1
+    <<: *airflow-common # Inherits all settings from 'airflow-common'
     container_name: airflow_scheduler
     command: scheduler
-    user: "${AIRFLOW_UID:-50000}" # This is the corrected way to handle user permissions
     depends_on:
-      postgres_airflow_db:
-        condition: service_healthy
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
-    environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow_db:5432/airflow
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - postgres_airflow_db
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  # The 'init' service runs once to create the database and the admin user.
+  airflow-init:
+    <<: *airflow-common # Inherits all settings from 'airflow-common'
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db init
+        airflow users create \
+          --username ${AIRFLOW_ADMIN_USER} \
+          --password ${AIRFLOW_ADMIN_PASSWORD} \
+          --firstname Airflow \
+          --lastname Admin \
+          --role Admin \
+          --email admin@airflow.com
+    depends_on:
+      - postgres_airflow_db
