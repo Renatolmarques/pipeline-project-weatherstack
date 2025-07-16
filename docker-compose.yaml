@@ -1,15 +1,13 @@
-# Full docker-compose file for the data pipeline project.
-# This setup uses an .env file to manage secrets and environment-specific configurations,
-# ensuring that no sensitive data is hardcoded and committed to version control.
+# Final and corrected docker-compose file for the entire data pipeline project.
+# This version uses the 'user' directive for better permission handling with Airflow.
 
 services:
   db:
-    container_name: postgres_container
+    container_name: postgres_data_db
     image: postgres:14.17
     platform: linux/amd64
     ports:
       - "5001:5432"
-    # Environment variables are loaded from the .env file at the root of the project.
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -27,8 +25,6 @@ services:
     working_dir: /app/dbt/weather_dw
     entrypoint: ""
     command: tail -f /dev/null
-    # These variables are passed to the container, allowing dbt to connect to the database.
-    # The values are sourced from the .env file.
     environment:
       - DBT_USER=${POSTGRES_USER}
       - DBT_PASSWORD=${POSTGRES_PASSWORD}
@@ -49,19 +45,62 @@ services:
     ports:
       - "8088:8088"
     environment:
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # We only need the secret key here now
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
     volumes:
-      # Persists Superset's own metadata database
       - ./superset/data:/app/superset_home
-      # Mounts the requirements file to install the PG driver
       - ./superset/requirements-local.txt:/app/docker/requirements-local.txt
-      # Mounts the startup script into the container
-      - ./superset/docker-init.sh:/app/docker/docker-init.sh
-    # This tells the container to run our init script upon startup
-    command: ["/app/docker/docker-init.sh"]
     depends_on:
       - db
       - redis
+
+  postgres_airflow_db:
+    image: postgres:13
+    container_name: postgres_airflow_db
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  airflow-webserver:
+    image: apache/airflow:2.8.1
+    container_name: airflow_webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    user: "${AIRFLOW_UID:-50000}"
+    depends_on:
+      postgres_airflow_db:
+        condition: service_healthy
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow_db:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      # ADD THIS LINE to increase the webserver startup timeout to 300s
+      - GUNICORN_CMD_ARGS=--timeout 300
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.1
+    container_name: airflow_scheduler
+    command: scheduler
+    user: "${AIRFLOW_UID:-50000}" # This is the corrected way to handle user permissions
+    depends_on:
+      postgres_airflow_db:
+        condition: service_healthy
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow_db:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor

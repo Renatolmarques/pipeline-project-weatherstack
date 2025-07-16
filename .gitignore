@@ -9,3 +9,7 @@ dbt/profiles/
 
 # Local environment variables file
 .env
+
+# Airflow logs and plugins
+logs/
+plugins/

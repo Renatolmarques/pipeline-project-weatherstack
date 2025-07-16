@@ -11,19 +11,6 @@ fi
 echo "Upgrading Superset metadata database..."
 superset db upgrade
 
-# Create an admin user if not already created
-echo "Creating admin user..."
-superset fab create-admin \
-  --username ${ADMIN_USERNAME} \
-  --firstname Superset \
-  --lastname Admin \
-  --email ${ADMIN_EMAIL} \
-  --password ${ADMIN_PASSWORD}
-
-# Initialize Superset with default roles and permissions
-echo "Initializing Superset..."
-superset init
-
 # Start the Superset web server in the foreground
 echo "Starting Superset web server on port 8088"
 gunicorn \
