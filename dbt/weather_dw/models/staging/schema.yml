@@ -1,0 +1,18 @@
+# This file declares the sources (raw tables) that our dbt project will use.
+version: 2
+
+sources:
+  - name: weatherstack_raw_data # A unique name for this source group.
+    description: "Source data from the weatherstack API, loaded via Python script."
+    # Tells dbt where to find the tables for this source.
+    schema: dev 
+    tables:
+      - name: raw_weather_data # The actual name of our raw table in the database.
+        description: "Raw weather data for 10 cities in Pernambuco, Brazil."
+        # Here we can also declare tests for our raw data.
+        columns:
+          - name: id
+            description: "Primary key for the raw data table."
+            tests:
+              - unique
+              - not_null

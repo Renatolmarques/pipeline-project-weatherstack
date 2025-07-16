@@ -39,6 +39,8 @@ def create_table(conn):
                 weather_descriptions TEXT,
                 wind_speed FLOAT,
                 time TIMESTAMP,
+                -- ADD THIS LINE BACK
+                inserted_at TIMESTAMP DEFAULT NOW(),
                 utc_offset TEXT
             );
         """)

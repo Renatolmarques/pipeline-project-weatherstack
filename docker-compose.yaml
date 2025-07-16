@@ -20,15 +20,21 @@ services:
     # Mounts the current project directory (.) into '/app' inside the container
     volumes:
       - .:/app
+      - ./dbt/profiles:/root/.dbt
       
     # Sets the default working directory inside the container
-    working_dir: /app
+    working_dir: /app/dbt/weather_dw
     
     # ADD THIS LINE TO DISABLE THE DEFAULT ENTRYPOINT
     entrypoint: ""
     
     # This command now runs directly, keeping the container alive
     command: tail -f /dev/null
+
+    environment:
+      # Passes database credentials as environment variables to the container
+      - DBT_USER=db_user
+      - DBT_PASSWORD=db_password
     
     # Ensures the dbt service only starts after the 'db' service is ready
     depends_on:
