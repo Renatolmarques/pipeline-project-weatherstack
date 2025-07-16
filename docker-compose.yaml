@@ -1,14 +1,19 @@
+# Full docker-compose file for the data pipeline project.
+# This setup uses an .env file to manage secrets and environment-specific configurations,
+# ensuring that no sensitive data is hardcoded and committed to version control.
+
 services:
   db:
     container_name: postgres_container
     image: postgres:14.17
-    platform: linux/amd64 # Specifies the platform for Apple Silicon compatibility
+    platform: linux/amd64
     ports:
       - "5001:5432"
+    # Environment variables are loaded from the .env file at the root of the project.
     environment:
-      POSTGRES_DB: db
-      POSTGRES_USER: db_user
-      POSTGRES_PASSWORD: db_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - ./postgres/data:/var/lib/postgresql/data
 
@@ -16,26 +21,47 @@ services:
     container_name: dbt_container
     image: ghcr.io/dbt-labs/dbt-postgres:1.8.1
     platform: linux/amd64
-    
-    # Mounts the current project directory (.) into '/app' inside the container
     volumes:
       - .:/app
       - ./dbt/profiles:/root/.dbt
-      
-    # Sets the default working directory inside the container
     working_dir: /app/dbt/weather_dw
-    
-    # ADD THIS LINE TO DISABLE THE DEFAULT ENTRYPOINT
     entrypoint: ""
-    
-    # This command now runs directly, keeping the container alive
     command: tail -f /dev/null
-
+    # These variables are passed to the container, allowing dbt to connect to the database.
+    # The values are sourced from the .env file.
     environment:
-      # Passes database credentials as environment variables to the container
-      - DBT_USER=db_user
-      - DBT_PASSWORD=db_password
-    
-    # Ensures the dbt service only starts after the 'db' service is ready
+      - DBT_USER=${POSTGRES_USER}
+      - DBT_PASSWORD=${POSTGRES_PASSWORD}
     depends_on:
       - db
+
+  redis:
+    container_name: redis_container
+    image: redis:latest
+    platform: linux/amd64
+    ports:
+      - "6379:6379"
+
+  superset:
+    container_name: superset_container
+    image: apache/superset
+    platform: linux/amd64
+    ports:
+      - "8088:8088"
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
+    volumes:
+      # Persists Superset's own metadata database
+      - ./superset/data:/app/superset_home
+      # Mounts the requirements file to install the PG driver
+      - ./superset/requirements-local.txt:/app/docker/requirements-local.txt
+      # Mounts the startup script into the container
+      - ./superset/docker-init.sh:/app/docker/docker-init.sh
+    # This tells the container to run our init script upon startup
+    command: ["/app/docker/docker-init.sh"]
+    depends_on:
+      - db
+      - redis

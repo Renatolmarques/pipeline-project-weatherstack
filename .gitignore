@@ -1,5 +1,11 @@
-.venv
-postgres/data
+# Python virtual environment
 .venv/
+
+# Docker volume for PostgreSQL data
 postgres/data/
+
+# DBT profiles directory with credentials
 dbt/profiles/
+
+# Local environment variables file
+.env
