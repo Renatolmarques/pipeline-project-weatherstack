@@ -13,3 +13,4 @@ dbt/profiles/
 # Airflow logs and plugins
 logs/
 plugins/dbt/weather_dw/target/
+dbt/weather_dw/target/
